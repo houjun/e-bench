@@ -12,6 +12,7 @@ typedef struct ECoGMeta {
     // Dimension
     int     ECoGIndx_ndims;
     int     EIndx_ndims;   
+    int     ELbls_ndims;   
 
     // Data size of each dimension
     hsize_t ECoGIndx_dim[MAXDIM];       // Offset range of each trial
@@ -21,7 +22,7 @@ typedef struct ECoGMeta {
     // actual metadata
     double* ECoGIndx_data;
     double* EIndx_data;
-    char*  ELbls_data;
+    char**  ELbls_data;
 
 } ECoGMeta;
 
@@ -29,7 +30,7 @@ herr_t root_get_metadata(hid_t file_id, ECoGMeta* metadata)
 {
 
     int     i;
-    hid_t   ECoGIndx_id, EIndx_id, ELbls_id;
+    hid_t   ECoGIndx_id, EIndx_id, ELbls_id, ELbls_memtype;
     hid_t   ECoGIndx_space, EIndx_space, ELbls_space;
     hsize_t ECoGIndx_size=1, EIndx_size=1, ELbls_size=1;
     herr_t      status;
@@ -45,14 +46,10 @@ herr_t root_get_metadata(hid_t file_id, ECoGMeta* metadata)
     EIndx_space    = H5Dget_space(EIndx_id   );
     ELbls_space    = H5Dget_space(ELbls_id   );
 
-    // Get dims of each datasets
-    metadata->ECoGIndx_ndims = H5Sget_simple_extent_ndims(ECoGIndx_space);
-    metadata->EIndx_ndims    = H5Sget_simple_extent_ndims(EIndx_space);
-
-    // Get data size
-    H5Sget_simple_extent_dims(ECoGIndx_space, metadata->ECoGIndx_dim, NULL);
-    H5Sget_simple_extent_dims(EIndx_space,    metadata->EIndx_dim, NULL);
-    H5Sget_simple_extent_dims(ELbls_space,    metadata->ELbls_dim, NULL);
+    // Get data size and dim info
+    metadata->ECoGIndx_ndims = H5Sget_simple_extent_dims(ECoGIndx_space, metadata->ECoGIndx_dim, NULL);
+    metadata->EIndx_ndims    = H5Sget_simple_extent_dims(EIndx_space,    metadata->EIndx_dim, NULL);
+    metadata->ELbls_ndims    = H5Sget_simple_extent_dims(ELbls_space,    metadata->ELbls_dim, NULL);
 
     // Calculate how much space we need
     for (i = 0; i < metadata->ECoGIndx_ndims; i++) 
@@ -64,13 +61,16 @@ herr_t root_get_metadata(hid_t file_id, ECoGMeta* metadata)
     // Allocate memory
     metadata->ECoGIndx_data = (double*)malloc(ECoGIndx_size*sizeof(double));
     metadata->EIndx_data    = (double*)malloc(EIndx_size*sizeof(double));
-    metadata->ELbls_data    = (char*)malloc(metadata->ELbls_dim[0]*LABEL_LEN*sizeof(double));
+    metadata->ELbls_data    = (char**)malloc(metadata->ELbls_dim[0]*sizeof(char*));
 
     // Read all metadata
-    H5Dread(ECoGIndx_id, H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, metadata->ECoGIndx_data);
-    H5Dread(EIndx_id   , H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, metadata->EIndx_data);
-//    H5Dread(ELbls_id   , H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, metadata->ELbls_data);
+    status = H5Dread(ECoGIndx_id, H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, metadata->ECoGIndx_data);
+    status = H5Dread(EIndx_id   , H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, metadata->EIndx_data);
 
+    // Special case for reading label strings.
+    ELbls_memtype = H5Tcopy (H5T_C_S1);
+    status = H5Tset_size (ELbls_memtype, H5T_VARIABLE);
+    status = H5Dread (ELbls_id, ELbls_memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, metadata->ELbls_data);
 
     // Close
     status = H5Dclose(ECoGIndx_id);
@@ -107,10 +107,9 @@ int main(int argc, char* argv[]) {
         printf("Event_ECoGIndx: [0]:%.0f [1]:%.0f\n", metadata->ECoGIndx_data[0], metadata->ECoGIndx_data[1]);
         printf("Event_ECoGIndx: [3510]:%.0f [3511]:%.0f\n", metadata->ECoGIndx_data[3510], metadata->ECoGIndx_data[3511]);
         printf("EIndx_data: [0]:%.0f [1755]:%.0f\n", metadata->EIndx_data[0], metadata->EIndx_data[1755]);
+        printf("Labels: [0]:%s [50]:%s\n", metadata->ELbls_data[0], metadata->ELbls_data[50]);
 
     }
-
-
 
  
     // Open an existing dataset.
