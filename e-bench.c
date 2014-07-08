@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
     
     herr_t      status;
     hid_t       file_id, ECoGData_id, ECoGData_space, ECoGData_memspace, plist_id;
-    hsize_t     i, j, ECoGData_dim[MAXDIM], my_count[MAXDIM], my_offset[MAXDIM], my_trials, total_size;
+    hsize_t     i, j, ECoGData_dim[MAXDIM], my_count[MAXDIM], my_offset[MAXDIM], my_trials, total_trials;
     hsize_t     vnum_trial;
     hsize_t*    read_idx;
     
@@ -45,44 +45,52 @@ int main(int argc, char* argv[]) {
         // Allocate memory for actual read index
         read_idx = (hsize_t*)malloc(metadata->EIndx_ndims * sizeof(hsize_t));
 
-        total_size = 0;
+        total_trials = 0;
         // Find how much data we need to read
         for (i = 0; i < metadata->EIndx_dim[0]; i++) {
             for (j = 0; j < query_num; j++) {
                 //printf("%s - %s\n", metadata->ELbls_data[ (int)(metadata->EIndx_data[i]) - 1 ], query_labels[j]);
                 if ( strcmp( metadata->ELbls_data[ (int)(metadata->EIndx_data[i]) - 1 ], query_labels[j]) == 0 ) {
-                    read_idx[total_size++] = i;
+                    read_idx[total_trials++] = i;
                 }
             }
         }
 
         vnum_trial = metadata->vnum_trial;
 
-        printf("Total trials to be read %llu\n", total_size);
+        printf("Total trials to be read %llu\n", total_trials);
     }
     
-    // total_size is the number of data blocks(each with 301*256 elements) that we need to read
+    // total_trials is the number of data blocks(each with 301*256 elements) that we need to read
     // read_idx has all the offsets
 
-    MPI_Bcast(&total_size, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
+    MPI_Bcast(&total_trials, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
+
+    // TODO: further decompose when proc_num is larger than needed trials.
+    if(total_trials < proc_num) {
+        if(my_rank == ROOTPROC)
+            printf("Too few reads, aborting...\n");
+        MPI_Finalize();
+        exit(-1);
+    }
     
     // Allocate memory for actual read index, all same size for now
     if(my_rank != ROOTPROC)
-        read_idx = (hsize_t*)malloc(total_size * sizeof(hsize_t));
+        read_idx = (hsize_t*)malloc(total_trials * sizeof(hsize_t));
 
-    MPI_Bcast(read_idx, total_size, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
+    MPI_Bcast(read_idx, total_trials, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
     
     MPI_Bcast(&vnum_trial, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
 
         
     
     // All processes open the data file.
-    plist_id        = H5Pcreate(H5P_FILE_ACCESS);
+    plist_id           = H5Pcreate(H5P_FILE_ACCESS);
     H5Pset_fapl_mpio(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL);
 
-    file_id         = H5Fopen(filename, H5F_ACC_RDWR, plist_id);
-    ECoGData_id     = H5Dopen(file_id, "/Data/ECoG", H5P_DEFAULT);
-    ECoGData_space  = H5Dget_space(ECoGData_id);
+    file_id            = H5Fopen(filename, H5F_ACC_RDONLY, plist_id);
+    ECoGData_id        = H5Dopen(file_id, DSET_NAME, H5P_DEFAULT);
+    ECoGData_space     = H5Dget_space(ECoGData_id);
 
     H5Sget_simple_extent_dims(ECoGData_space, ECoGData_dim, NULL);
 
@@ -90,24 +98,23 @@ int main(int argc, char* argv[]) {
     my_offset[1]       = 0;
 
     // Each reads vnum_trial(301) vectors.
-    my_count[0]        = vnum_trial + 1;
+    my_count[0]        = vnum_trial;
     my_count[1]        = ECoGData_dim[1];
 
     // Total elements of each trial
     hsize_t elem_trial = my_count[1]*my_count[0];
 
     if (my_rank != proc_num-1) {
-        my_trials = total_size/proc_num;
+        my_trials      = total_trials/proc_num;
     }
     else {
-        my_trials = total_size/proc_num + total_size%proc_num;
+        my_trials      = total_trials/proc_num + total_trials%proc_num;
     }
 
     // Used for union selection
     hsize_t my_total_count[MAXDIM];
     my_total_count[0]  = my_count[0] * my_trials; 
     my_total_count[1]  = my_count[1]; 
-
 
     //ECoGData_memspace  = H5Screate_simple(2, my_count, NULL);
     ECoGData_memspace  = H5Screate_simple(2, my_total_count, NULL);
@@ -118,23 +125,49 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
 
     for (i = 0; i < my_trials; i++) {
-        //printf("%d - my_i:%d\n", my_rank, (total_size/proc_num)*my_rank+i );
-        my_offset[0] = read_idx[(total_size/proc_num)*my_rank+i] * my_count[0]; 
+        //printf("%d - my_i:%d\n", my_rank, (total_trials/proc_num)*my_rank+i );
+        my_offset[0]   = read_idx[(total_trials/proc_num)*my_rank+i] * my_count[0]; 
 
         if (i == 0)
-            status   = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
+            status     = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
         else
-            status   = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_OR, my_offset, NULL, my_count, NULL);
+            status     = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_OR, my_offset, NULL, my_count, NULL);
         //status = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
         //printf("%d - Offsets: [0]:%llu [1]:%llu\n", my_rank, my_offset[0],my_offset[1]);
         //status = H5Dread(ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, ECoGData_space, H5P_DEFAULT, ECoGData_data+elem_trial*i);
         //printf("%d@%d - %f %f\n", my_rank, i, ECoGData_data[elem_trial*(i+1) - 1], ECoGData_data[elem_trial*(i+1)-2]);
     }
+
+    double start_time, elapsed_time, all_time_max, all_time_min, all_time_avg;
+    start_time = MPI_Wtime();
  
-    status = H5Dread(ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, ECoGData_space, H5P_DEFAULT, ECoGData_data);
+    // Are we doing collective read?
+    if (cio) {
+        hid_t plist2_id = H5Pcreate(H5P_DATASET_XFER);
+        H5Pset_dxpl_mpio(plist2_id, H5FD_MPIO_COLLECTIVE);
+        status = H5Dread(ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, ECoGData_space, plist2_id, ECoGData_data);
+        H5Pclose(plist2_id);
+    }
+    else {
+        status = H5Dread(ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, ECoGData_space, H5P_DEFAULT, ECoGData_data);
+    }
     if (status < 0)
         printf("Error reading!\n");
     
+    elapsed_time = MPI_Wtime() - start_time;
+
+    MPI_Reduce(&elapsed_time, &all_time_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&elapsed_time, &all_time_min, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&elapsed_time, &all_time_avg, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    all_time_avg /= proc_num;
+
+    if(my_rank == ROOTPROC) {
+         printf("Total time: %f Min time: %f Avg time: %f Total data: %.1fM Agg Bandwidth: %f\n"
+                         , all_time_max, all_time_min, all_time_avg, my_trials*elem_trial*sizeof(double)/1024.0/1024.0, total_trials*elem_trial*sizeof(double)/1024.0/1024.0/all_time_max);
+         printf("Total size: %llu\n", my_trials*elem_trial);
+    }
+
     double my_sum = 0.0, all_sum;
     for (i = 0; i < my_trials*elem_trial; i++) {
         // There are -nan exist in the datafile, so need to check
@@ -145,6 +178,7 @@ int main(int argc, char* argv[]) {
     //printf("\n");
     //printf("my total count: %llu %llu\n", my_total_count[0], my_total_count[1]);
     MPI_Reduce(&my_sum, &all_sum, 1, MPI_DOUBLE, MPI_SUM, ROOTPROC, MPI_COMM_WORLD);
+
     if(my_rank == ROOTPROC) {
         printf("My sum = %f, All sum = %f\n", my_sum, all_sum);
 
@@ -154,12 +188,8 @@ int main(int argc, char* argv[]) {
         /*     printf("%f\t", ECoGData_data[i]); */
         /* } */
 
-        printf("Start cleaning up\n");
+        /* printf("Start cleaning up\n"); */
     }
-
-    // Close everything. 
-    status = H5Dclose(ECoGData_id);
-    status = H5Fclose(file_id);
 
     if (my_rank == ROOTPROC) {
         free(metadata->ECoGIndx_data);
@@ -174,7 +204,15 @@ int main(int argc, char* argv[]) {
     free(read_idx);
     free(ECoGData_data);
 
-    H5close();
+    // Close everything.
+    status = H5Dclose(ECoGData_id);
+    status = H5Sclose(ECoGData_space);
+    status = H5Sclose(ECoGData_memspace);
+    H5Pclose(plist_id);
+    status = H5Fclose(file_id);
+
+
+
     MPI_Finalize();
     return 0;
 
@@ -236,7 +274,7 @@ herr_t root_get_metadata(char* filename, ECoGMeta* metadata)
         strcpy(metadata->ELbls_data[i], tmpELbls_data[i]);
     }
 
-    metadata->vnum_trial = metadata->ECoGIndx_data[1] - metadata->ECoGIndx_data[0];
+    metadata->vnum_trial = metadata->ECoGIndx_data[1] - metadata->ECoGIndx_data[0] + 1;
 
     // Close
     status = H5Dvlen_reclaim (ELbls_memtype, ELbls_space, H5P_DEFAULT, tmpELbls_data);

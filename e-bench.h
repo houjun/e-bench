@@ -8,6 +8,7 @@
 #include <string.h>
 
 #define DATAFILE    "./EC6_CV.h5"
+#define DSET_NAME   "/Data/ECoG"
 #define ROOTPROC    0
 #define MAXDIM      3
 #define LABEL_LEN   8
