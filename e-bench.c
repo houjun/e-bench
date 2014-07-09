@@ -11,7 +11,6 @@ int main(int argc, char* argv[]) {
     herr_t      status;
     hid_t       file_id, ECoGData_id, ECoGData_space, ECoGData_memspace, plist_id;
     hsize_t     i, j, ECoGData_dim[MAXDIM], my_count[MAXDIM], my_offset[MAXDIM], my_trials, total_trials;
-    hsize_t     vnum_trial;
     hsize_t*    read_idx;
     
     ECoGMeta*   metadata;
@@ -57,8 +56,6 @@ int main(int argc, char* argv[]) {
         }
         ECoGIndx_size = metadata->ECoGIndx_size;
 
-        vnum_trial = metadata->vnum_trial;
-
         printf("Total trials to be read %llu\n", total_trials);
         //get_indx_freq(metadata->EIndx_data, metadata->EIndx_size);
     }
@@ -82,9 +79,6 @@ int main(int argc, char* argv[]) {
 
     MPI_Bcast(read_idx, total_trials, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
     
-    MPI_Bcast(&vnum_trial, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
-
-        
     // Broadcast index array
     MPI_Bcast(&ECoGIndx_size, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
     ECoGIndx = (double*)malloc(ECoGIndx_size * sizeof(double));
@@ -97,21 +91,13 @@ int main(int argc, char* argv[]) {
     plist_id           = H5Pcreate(H5P_FILE_ACCESS);
     H5Pset_fapl_mpio(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL);
 
+    // Open file and dataset
     file_id            = H5Fopen(filename, H5F_ACC_RDONLY, plist_id);
     ECoGData_id        = H5Dopen(file_id, DSET_NAME, H5P_DEFAULT);
     ECoGData_space     = H5Dget_space(ECoGData_id);
 
+    // Get real data dimension
     H5Sget_simple_extent_dims(ECoGData_space, ECoGData_dim, NULL);
-
-    // All starts with 0 of the second dimension.    
-    my_offset[1]       = 0;
-
-    // Each reads vnum_trial(301) vectors.
-    my_count[0]        = vnum_trial;
-    my_count[1]        = ECoGData_dim[1];
-
-    // Total elements of each trial
-    hsize_t elem_trial = my_count[1]*my_count[0];
 
     if (my_rank != proc_num-1) {
         my_trials      = total_trials/proc_num;
@@ -120,36 +106,45 @@ int main(int argc, char* argv[]) {
         my_trials      = total_trials/proc_num + total_trials%proc_num;
     }
 
-    // Used for union selection
-    hsize_t my_total_count[MAXDIM];
-    my_total_count[0]  = my_count[0] * my_trials; 
-    my_total_count[1]  = my_count[1]; 
+    // Calculate total space needed 
+    hsize_t tmp_idx, my_total_count[MAXDIM];
+    my_total_count[0]  = 0; 
+    my_total_count[1]  = ECoGData_dim[1]; 
+    for (i = 0; i < my_trials; i++) {
+        tmp_idx            = read_idx[(total_trials/proc_num)*my_rank+i] * 2;
+        my_total_count[0] += ECoGIndx[tmp_idx+1] - ECoGIndx[tmp_idx] + 1; 
+    }
+    //printf("my_total_count [0]:%llu, [1]:%llu\n", my_total_count[0],my_total_count[1]);
 
-    //ECoGData_memspace  = H5Screate_simple(2, my_count, NULL);
+    // Create memory space
     ECoGData_memspace  = H5Screate_simple(2, my_total_count, NULL);
 
-    // Actual data storage space
-    ECoGData_data      = (double*)malloc(my_trials*elem_trial*sizeof(double));
+    // File space 
+    ECoGData_data      = (double*)malloc(my_total_count[0]*my_total_count[1]*sizeof(double));
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    my_offset[1]   = 0;
+    my_count[1]    = ECoGData_dim[1];
 
     for (i = 0; i < my_trials; i++) {
-        //printf("%d - my_i:%d\n", my_rank, (total_trials/proc_num)*my_rank+i );
-        my_offset[0]   = ECoGIndx[ read_idx[(total_trials/proc_num)*my_rank+i] * 2 ] - 1; 
+        tmp_idx        = read_idx[(total_trials/proc_num)*my_rank+i] * 2;
+        my_offset[0]   = ECoGIndx[tmp_idx ] - 1; 
+        my_count[0]    = ECoGIndx[tmp_idx+1] - ECoGIndx[tmp_idx] + 1; 
 
         if (i == 0)
             status     = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
         else
             status     = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_OR, my_offset, NULL, my_count, NULL);
         //status = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
-        //printf("%d - Offsets: [0]:%llu [1]:%llu\n", my_rank, my_offset[0],my_offset[1]);
         //status = H5Dread(ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, ECoGData_space, H5P_DEFAULT, ECoGData_data+elem_trial*i);
-        //printf("%d@%d - %f %f\n", my_rank, i, ECoGData_data[elem_trial*(i+1) - 1], ECoGData_data[elem_trial*(i+1)-2]);
+        //printf("%d - Offsets: [0]:%llu [1]:%llu\n", my_rank, my_offset[0],my_offset[1]);
+        //printf("%d - Counts:  [0]:%llu [1]:%llu\n", my_rank, my_count[0],my_count[1]);
     }
 
     double start_time, elapsed_time, all_time_max, all_time_min, all_time_avg;
+    MPI_Barrier(MPI_COMM_WORLD);
+
     start_time = MPI_Wtime();
- 
+
     // Are we doing collective read?
     if (cio) {
         hid_t plist2_id = H5Pcreate(H5P_DATASET_XFER);
@@ -173,12 +168,13 @@ int main(int argc, char* argv[]) {
 
     if(my_rank == ROOTPROC) {
          printf("Total time: %f Min time: %f Avg time: %f Total data: %.1fM Agg Bandwidth: %f\n"
-                         , all_time_max, all_time_min, all_time_avg, my_trials*elem_trial*sizeof(double)/1024.0/1024.0, total_trials*elem_trial*sizeof(double)/1024.0/1024.0/all_time_max);
+                         , all_time_max, all_time_min, all_time_avg, my_total_count[0]*my_total_count[1]*sizeof(double)/1024.0/1024.0
+                         , my_total_count[0]*my_total_count[1]*sizeof(double)/1024.0/1024.0/all_time_max);
          //printf("Total size: %llu\n", my_trials*elem_trial);
     }
 
     double my_sum = 0.0, all_sum;
-    for (i = 0; i < my_trials*elem_trial; i++) {
+    for (i = 0; i < my_total_count[0]*my_total_count[1]; i++) {
         // There are -nan exist in the datafile, so need to check
         if ( !isnan(ECoGData_data[i]) ) 
             my_sum += ECoGData_data[i]; 
@@ -284,8 +280,6 @@ herr_t root_get_metadata(char* filename, ECoGMeta* metadata)
     for (i = 0; i < metadata->ELbls_dim[0]; i++) {
         strcpy(metadata->ELbls_data[i], tmpELbls_data[i]);
     }
-
-    metadata->vnum_trial = metadata->ECoGIndx_data[1] - metadata->ECoGIndx_data[0] + 1;
 
     // Close
     status = H5Dvlen_reclaim (ELbls_memtype, ELbls_space, H5P_DEFAULT, tmpELbls_data);

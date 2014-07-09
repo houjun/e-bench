@@ -30,9 +30,6 @@ typedef struct ECoGMeta {
     hsize_t ECoGIndx_size;
     hsize_t EIndx_size;
 
-    // Number of vectors of each trial
-    hsize_t vnum_trial;
-
     // actual metadata
     double* ECoGIndx_data;
     double* EIndx_data;
