@@ -23,6 +23,8 @@ int main(int argc, char* argv[]) {
     int         query_num, cio=1;
     int         proc_num, my_rank;
     
+    hsize_t     ECoGIndx_size;
+    double*     ECoGIndx;
     double*     ECoGData_data;
 
     // Start MPI
@@ -39,12 +41,11 @@ int main(int argc, char* argv[]) {
     if (my_rank == ROOTPROC) { 
 
         // Allocate matadata storage 
-        metadata = (ECoGMeta*)malloc(sizeof(ECoGMeta));
-        status = root_get_metadata(filename, metadata);
+        metadata     = (ECoGMeta*)malloc(sizeof(ECoGMeta));
+        status       = root_get_metadata(filename, metadata);
  
         // Allocate memory for actual read index
-        read_idx = (hsize_t*)malloc(metadata->EIndx_ndims * sizeof(hsize_t));
-
+        read_idx = (hsize_t*)malloc(metadata->EIndx_size* sizeof(hsize_t));
         total_trials = 0;
         // Find how much data we need to read
         for (i = 0; i < metadata->EIndx_dim[0]; i++) {
@@ -55,6 +56,7 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+        ECoGIndx_size = metadata->ECoGIndx_size;
 
         vnum_trial = metadata->vnum_trial;
 
@@ -83,6 +85,13 @@ int main(int argc, char* argv[]) {
     MPI_Bcast(&vnum_trial, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
 
         
+    // Broadcast index array
+    MPI_Bcast(&ECoGIndx_size, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
+    ECoGIndx = (double*)malloc(ECoGIndx_size * sizeof(double));
+    printf("ECoGIndx_size%d\n", ECoGIndx_size);
+    if(my_rank == ROOTPROC)
+        memcpy(ECoGIndx, metadata->ECoGIndx_data, ECoGIndx_size * sizeof(double));
+    MPI_Bcast(ECoGIndx, ECoGIndx_size, MPI_DOUBLE, ROOTPROC, MPI_COMM_WORLD);
     
     // All processes open the data file.
     plist_id           = H5Pcreate(H5P_FILE_ACCESS);
@@ -126,7 +135,7 @@ int main(int argc, char* argv[]) {
 
     for (i = 0; i < my_trials; i++) {
         //printf("%d - my_i:%d\n", my_rank, (total_trials/proc_num)*my_rank+i );
-        my_offset[0]   = read_idx[(total_trials/proc_num)*my_rank+i] * my_count[0]; 
+        my_offset[0]   = ECoGIndx[ read_idx[(total_trials/proc_num)*my_rank+i] * 2 ] - 1; 
 
         if (i == 0)
             status     = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
@@ -203,6 +212,7 @@ int main(int argc, char* argv[]) {
 
     free(read_idx);
     free(ECoGData_data);
+    free(ECoGIndx);
 
     // Close everything.
     status = H5Dclose(ECoGData_id);
@@ -224,7 +234,6 @@ herr_t root_get_metadata(char* filename, ECoGMeta* metadata)
     hid_t   file_id;
     hid_t   ECoGIndx_id, EIndx_id, ELbls_id, ELbls_memtype;
     hid_t   ECoGIndx_space, EIndx_space, ELbls_space;
-    hsize_t ECoGIndx_size=1, EIndx_size=1, ELbls_size=1;
     herr_t      status;
      
     file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
@@ -244,16 +253,18 @@ herr_t root_get_metadata(char* filename, ECoGMeta* metadata)
     metadata->EIndx_ndims    = H5Sget_simple_extent_dims(EIndx_space,    metadata->EIndx_dim, NULL);
     metadata->ELbls_ndims    = H5Sget_simple_extent_dims(ELbls_space,    metadata->ELbls_dim, NULL);
 
+    metadata->ECoGIndx_size  = 1;
+    metadata->EIndx_size     = 1;
     // Calculate how much space we need
     for (i = 0; i < metadata->ECoGIndx_ndims; i++) 
-        ECoGIndx_size *= metadata->ECoGIndx_dim[i];
+        metadata->ECoGIndx_size *= metadata->ECoGIndx_dim[i];
 
     for (i = 0; i < metadata->EIndx_ndims; i++) 
-        EIndx_size    *= metadata->ECoGIndx_dim[i];
+        metadata->EIndx_size    *= metadata->ECoGIndx_dim[i];
 
     // Allocate memory
-    metadata->ECoGIndx_data = (double*)malloc(ECoGIndx_size*sizeof(double));
-    metadata->EIndx_data    = (double*)malloc(EIndx_size*sizeof(double));
+    metadata->ECoGIndx_data = (double*)malloc(metadata->ECoGIndx_size*sizeof(double));
+    metadata->EIndx_data    = (double*)malloc(metadata->EIndx_size*sizeof(double));
     
     char** tmpELbls_data    = (char**)malloc(metadata->ELbls_dim[0]*sizeof(char*));
 

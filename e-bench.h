@@ -26,6 +26,9 @@ typedef struct ECoGMeta {
     hsize_t EIndx_dim[MAXDIM];          // Type ID of each trial
     hsize_t ELbls_dim[MAXDIM];          // Label name of each type ID
 
+    hsize_t ECoGIndx_size;
+    hsize_t EIndx_size;
+
     // Number of vectors of each trial
     hsize_t vnum_trial;
 
