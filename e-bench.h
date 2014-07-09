@@ -12,6 +12,7 @@
 #define ROOTPROC    0
 #define MAXDIM      3
 #define LABEL_LEN   8
+#define LABEL_NUM   53
 #define QUERY_SIZE  16
 #define HNAME_MAX   128
 

@@ -7,7 +7,6 @@
 #include "e-bench.h"
 
 int main(int argc, char* argv[]) {
-
     
     herr_t      status;
     hid_t       file_id, ECoGData_id, ECoGData_space, ECoGData_memspace, plist_id;
@@ -61,6 +60,7 @@ int main(int argc, char* argv[]) {
         vnum_trial = metadata->vnum_trial;
 
         printf("Total trials to be read %llu\n", total_trials);
+        //get_indx_freq(metadata->EIndx_data, metadata->EIndx_size);
     }
     
     // total_trials is the number of data blocks(each with 301*256 elements) that we need to read
@@ -260,7 +260,7 @@ herr_t root_get_metadata(char* filename, ECoGMeta* metadata)
         metadata->ECoGIndx_size *= metadata->ECoGIndx_dim[i];
 
     for (i = 0; i < metadata->EIndx_ndims; i++) 
-        metadata->EIndx_size    *= metadata->ECoGIndx_dim[i];
+        metadata->EIndx_size    *= metadata->EIndx_dim[i];
 
     // Allocate memory
     metadata->ECoGIndx_data = (double*)malloc(metadata->ECoGIndx_size*sizeof(double));
@@ -339,4 +339,20 @@ int test(ECoGMeta* metadata)
     printf("Labels: [0]:%s [50]:%s\n", metadata->ELbls_data[0], metadata->ELbls_data[50]);
 
     return 0;
+}
+
+int get_indx_freq(double* idx, int cnt)
+{
+
+    int i;
+    int freq[LABEL_NUM];
+    memset(freq, 0, sizeof(freq));
+    for (i = 0; i < cnt; i++) {
+        freq[ (int)(idx[i])-1 ]++;
+    }
+    for (i = 0; i < LABEL_NUM; i++) {
+        printf("%d:%d \t", i, freq[i]);
+    }
+
+    printf("\n");
 }
