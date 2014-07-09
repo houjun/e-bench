@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
     // Broadcast index array
     MPI_Bcast(&ECoGIndx_size, 1, MPI_LONG_LONG_INT, ROOTPROC, MPI_COMM_WORLD);
     ECoGIndx = (double*)malloc(ECoGIndx_size * sizeof(double));
-    printf("ECoGIndx_size%d\n", ECoGIndx_size);
+    //printf("ECoGIndx_size%d\n", ECoGIndx_size);
     if(my_rank == ROOTPROC)
         memcpy(ECoGIndx, metadata->ECoGIndx_data, ECoGIndx_size * sizeof(double));
     MPI_Bcast(ECoGIndx, ECoGIndx_size, MPI_DOUBLE, ROOTPROC, MPI_COMM_WORLD);
@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
     if(my_rank == ROOTPROC) {
          printf("Total time: %f Min time: %f Avg time: %f Total data: %.1fM Agg Bandwidth: %f\n"
                          , all_time_max, all_time_min, all_time_avg, my_trials*elem_trial*sizeof(double)/1024.0/1024.0, total_trials*elem_trial*sizeof(double)/1024.0/1024.0/all_time_max);
-         printf("Total size: %llu\n", my_trials*elem_trial);
+         //printf("Total size: %llu\n", my_trials*elem_trial);
     }
 
     double my_sum = 0.0, all_sum;
