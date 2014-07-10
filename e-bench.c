@@ -56,6 +56,8 @@ int main(int argc, char* argv[]) {
         }
         ECoGIndx_size = metadata->ECoGIndx_size;
 
+        test(metadata);
+
         printf("Total trials to be read %llu\n", total_trials);
         //get_indx_freq(metadata->EIndx_data, metadata->EIndx_size);
     }
