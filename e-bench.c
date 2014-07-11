@@ -35,9 +35,11 @@ int main(int argc, char* argv[]) {
     // check arguments
     query_num = parse_argv(argc, argv, filename, query_labels, &cio);
 
+
     // Only root process open and read all index datasets
     if (my_rank == ROOTPROC) { 
 
+        printf("%s\n", filename);
         // Allocate matadata storage 
         metadata     = (ECoGMeta*)malloc(sizeof(ECoGMeta));
         status       = root_get_metadata(filename, metadata);
@@ -48,7 +50,7 @@ int main(int argc, char* argv[]) {
         // Find how much data we need to read
         for (i = 0; i < metadata->EIndx_dim[0]; i++) {
             for (j = 0; j < query_num; j++) {
-                //printf("%s - %s\n", metadata->ELbls_data[ (int)(metadata->EIndx_data[i]) - 1 ], query_labels[j]);
+                //printf("[%d] %s - %s\n", (int)(metadata->EIndx_data[i]) - 1, metadata->ELbls_data[ (int)(metadata->EIndx_data[i]) - 1 ], query_labels[j]);
                 if ( strcmp( metadata->ELbls_data[ (int)(metadata->EIndx_data[i]) - 1 ], query_labels[j]) == 0 ) {
                     read_idx[total_trials++] = i;
                 }
@@ -56,10 +58,10 @@ int main(int argc, char* argv[]) {
         }
         ECoGIndx_size = metadata->ECoGIndx_size;
 
-        test(metadata);
+        //test(metadata);
+        //get_indx_freq(metadata->EIndx_data, metadata->EIndx_size, metadata);
 
         printf("Total trials to be read %llu\n", total_trials);
-        //get_indx_freq(metadata->EIndx_data, metadata->EIndx_size);
     }
     
     // total_trials is the number of data blocks(each with 301*256 elements) that we need to read
@@ -116,7 +118,7 @@ int main(int argc, char* argv[]) {
         tmp_idx            = read_idx[(total_trials/proc_num)*my_rank+i] * 2;
         my_total_count[0] += ECoGIndx[tmp_idx+1] - ECoGIndx[tmp_idx] + 1; 
     }
-    //printf("my_total_count [0]:%llu, [1]:%llu\n", my_total_count[0],my_total_count[1]);
+    //printf("my_trials: %llu, my_total_count [0]:%llu, [1]:%llu\n", my_trials, my_total_count[0],my_total_count[1]);
 
     // Create memory space
     ECoGData_memspace  = H5Screate_simple(2, my_total_count, NULL);
@@ -157,8 +159,10 @@ int main(int argc, char* argv[]) {
     else {
         status = H5Dread(ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, ECoGData_space, H5P_DEFAULT, ECoGData_data);
     }
-    if (status < 0)
-        printf("Error reading!\n");
+    if (status < 0) {
+        printf("Error reading! Exit...\n");
+        exit(-1);
+    }
     
     elapsed_time = MPI_Wtime() - start_time;
 
@@ -169,10 +173,11 @@ int main(int argc, char* argv[]) {
     all_time_avg /= proc_num;
 
     if(my_rank == ROOTPROC) {
-         printf("Total time: %f Min time: %f Avg time: %f Total data: %.1fM Agg Bandwidth: %f\n"
-                         , all_time_max, all_time_min, all_time_avg, my_total_count[0]*my_total_count[1]*sizeof(double)/1024.0/1024.0
-                         , my_total_count[0]*my_total_count[1]*sizeof(double)/1024.0/1024.0/all_time_max);
+  //       printf("Total time: %f Min time: %f Avg time: %f Total data: %.1fM Agg Bandwidth: %f\n"
+  //                       , all_time_max, all_time_min, all_time_avg, total_trials*my_total_count[1]*sizeof(double)/1024.0/1024.0
+  //                       , my_total_count[0]*my_total_count[1]*sizeof(double)/1024.0/1024.0/all_time_max);
          //printf("Total size: %llu\n", my_trials*elem_trial);
+         printf("Total time: %f\n",all_time_max);
     }
 
     double my_sum = 0.0, all_sum;
@@ -337,7 +342,7 @@ int test(ECoGMeta* metadata)
     return 0;
 }
 
-int get_indx_freq(double* idx, int cnt)
+int get_indx_freq(double* idx, int cnt, ECoGMeta* metadata)
 {
 
     int i;
@@ -347,7 +352,7 @@ int get_indx_freq(double* idx, int cnt)
         freq[ (int)(idx[i])-1 ]++;
     }
     for (i = 0; i < LABEL_NUM; i++) {
-        printf("%d:%d \t", i, freq[i]);
+        printf("%s:%d \t", metadata->ELbls_data[i], freq[i]);
     }
 
     printf("\n");
