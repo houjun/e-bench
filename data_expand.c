@@ -89,7 +89,7 @@ int data_expend(char* filename, ECoGMeta* metadata, hsize_t increase_mul)
     hsize_t     my_count[MAXDIM], my_offset[MAXDIM];
 
     // New filename
-    sprintf(new_filename,"%s_%d", filename, increase_mul);
+    sprintf(new_filename,"%s_%dG", filename, increase_mul);
     printf("%s\n", new_filename);
 
     // Open old file, dataset
@@ -106,7 +106,7 @@ int data_expend(char* filename, ECoGMeta* metadata, hsize_t increase_mul)
     // Read all ECoG_data of old file
     status               = H5Dread(ECoGData_id, H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, ECoGData);
         
-    printf("ECoGData: [0]:%f [1]:%f [2]:%f\n",ECoGData[0],ECoGData[1],ECoGData[2]);
+    //printf("ECoGData: [0]:%f [1]:%f [2]:%f\n",ECoGData[0],ECoGData[1],ECoGData[2]);
 
     // Init new dim
     new_ECoGData_dim[0]  = ECoGData_dim[0]*increase_mul;

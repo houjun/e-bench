@@ -237,11 +237,11 @@ herr_t root_get_metadata(char* filename, ECoGMeta* metadata)
     hid_t   file_id;
     hid_t   ECoGIndx_id, EIndx_id, ELbls_id, ELbls_memtype;
     hid_t   ECoGIndx_space, EIndx_space, ELbls_space;
-    herr_t      status;
+    herr_t  status;
      
     file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
 
-    // Open datasets, assuming the file is already open and file_id is correct
+    // Open datasets
     ECoGIndx_id = H5Dopen(file_id, "/Descriptors/Event_ECoGIndx", H5P_DEFAULT);
     EIndx_id    = H5Dopen(file_id, "/Descriptors/Event_EIndx", H5P_DEFAULT);
     ELbls_id    = H5Dopen(file_id, "/Descriptors/Event_ELbls", H5P_DEFAULT);
