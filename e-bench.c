@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
             status     = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_OR, my_offset, NULL, my_count, NULL);
         //status = H5Sselect_hyperslab(ECoGData_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
         //status = H5Dread(ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, ECoGData_space, H5P_DEFAULT, ECoGData_data+elem_trial*i);
-        //printf("%d - Offsets: [0]:%llu [1]:%llu\n", my_rank, my_offset[0],my_offset[1]);
+        //printf("\n%d - Offsets: [0]:%llu [1]:%llu\n", my_rank, my_offset[0],my_offset[1]);
         //printf("%d - Counts:  [0]:%llu [1]:%llu\n", my_rank, my_count[0],my_count[1]);
     }
 
@@ -173,11 +173,11 @@ int main(int argc, char* argv[]) {
     all_time_avg /= proc_num;
 
     if(my_rank == ROOTPROC) {
-  //       printf("Total time: %f Min time: %f Avg time: %f Total data: %.1fM Agg Bandwidth: %f\n"
-  //                       , all_time_max, all_time_min, all_time_avg, total_trials*my_total_count[1]*sizeof(double)/1024.0/1024.0
-  //                       , my_total_count[0]*my_total_count[1]*sizeof(double)/1024.0/1024.0/all_time_max);
-         //printf("Total size: %llu\n", my_trials*elem_trial);
-         printf("Total time: %f\n",all_time_max);
+         //printf("Total time: %f Min time: %f Avg time: %f Total data: %.1fM Agg Bandwidth: %f\n"
+         //                , all_time_max, all_time_min, all_time_avg, total_trials*my_total_count[1]*sizeof(double)/1024.0/1024.0
+         //                , my_total_count[0]*my_total_count[1]*sizeof(double)/1024.0/1024.0/all_time_max);
+         printf("Total time: %f\t",all_time_max);
+         printf("Total size: %lluM\n", total_trials*my_total_count[1]*sizeof(double)/1024.0/1024.0);
     }
 
     double my_sum = 0.0, all_sum;
@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
     MPI_Reduce(&my_sum, &all_sum, 1, MPI_DOUBLE, MPI_SUM, ROOTPROC, MPI_COMM_WORLD);
 
     if(my_rank == ROOTPROC) {
-        printf("My sum = %f, All sum = %f\n", my_sum, all_sum);
+        printf("All sum = %f\n", all_sum);
 
         /* for (i = my_trials*elem_trial; i > my_trials*elem_trial - 257 ; i--) { */
         /*     if(i % 6== 0) */

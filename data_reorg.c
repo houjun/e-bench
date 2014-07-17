@@ -135,7 +135,7 @@ int data_reorg(char* filename, ECoGMeta* metadata)
                 if (my_count[0] != 301) {
                     printf("%d: %f - %f = %llu\n", i, (metadata->ECoGIndx_data[i*2+1]), (metadata->ECoGIndx_data[i*2]), my_count[0]);
                 }
-                printf("Read - Offsets: [0]:%llu [1]:%llu\n", my_offset[0],my_offset[1]);
+                //printf("Read - Offsets: [0]:%llu [1]:%llu\n", my_offset[0],my_offset[1]);
                 //printf("Read - Counts:  [0]:%llu [1]:%llu\n", my_count[0],my_count[1]);
 
                 // read the data
@@ -155,7 +155,7 @@ int data_reorg(char* filename, ECoGMeta* metadata)
                 status       = H5Sselect_hyperslab(file_space, H5S_SELECT_SET, my_offset, NULL, my_count, NULL);
                 status       = H5Dwrite(new_ECoGData_id, H5T_IEEE_F64LE, ECoGData_memspace, file_space, H5P_DEFAULT, ECoGData);
 
-                printf("Write - Offsets: [0]:%llu [1]:%llu\n", my_offset[0],my_offset[1]);
+                //printf("Write - Offsets: [0]:%llu [1]:%llu\n", my_offset[0],my_offset[1]);
                 //printf("Write - Counts:  [0]:%llu [1]:%llu\n", my_count[0],my_count[1]);
 
 
